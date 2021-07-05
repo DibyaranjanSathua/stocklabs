@@ -184,7 +184,11 @@ class AliceBlueApi:
         """ Return list of bnf instruments from master contracts """
         self._bnf_instruments = [
             Instruments.create(x)
-            for x in self._nfo_master_contracts if "BANKNIFTY" in x["symbol"]
+            for x in self._options_master_contracts if "BANKNIFTY" in x["symbol"]
+        ]
+        self._bnf_instruments += [
+            Instruments.create(x)
+            for x in self._future_master_contracts if "BANKNIFTY" in x["symbol"]
         ]
 
     def get_bnf_option_instrument(
@@ -199,6 +203,16 @@ class AliceBlueApi:
             None
         )
 
+    def get_bnf_future_instrument(self, expiry: datetime.date):
+        """ Get future instrument """
+        return next(
+            (
+                x for x in self._bnf_instruments
+                if x.option_type == OptionType.FUT and x.expiry == expiry
+            ),
+            None
+        )
+
     @property
     def bnf_instruments(self) -> List[Instruments]:
         return self._bnf_instruments
@@ -206,17 +220,3 @@ class AliceBlueApi:
     @property
     def access_token(self) -> str:
         return self._access_token
-
-
-if __name__ == "__main__":
-    import json
-    obj = AliceBlueApi()
-    obj.api_setup()
-    obj.option_setup()
-    instrument = obj.get_bnf_instrument(
-        strike=35000, expiry=datetime.date(2021, 7, 1), option_type=OptionType.CE
-    )
-    print(instrument)
-    # with open("master_contracts.json", "w") as fh_:
-    #     json.dump(bnf_contracts, fh_)
-

@@ -8,6 +8,7 @@ from alice_blue_api.api import AliceBlueApi
 from alice_blue_api.enums import OptionType
 from alice_blue_api.websocket import AliceBlueWebSocket
 from alice_blue_api.websocket_streams import MarketData, CompactMarketData
+import time
 
 
 def test_websocket_streams():
@@ -47,6 +48,8 @@ def test_websocket_compact_market():
                   b'\x05\x00\x03\x0by\x00\x02\xba\x89\x00\x01\xbfD\x00\x00\xb0"\x00\x00\xb7\x98'
     # binary_data = b'\x02\x02\x00\x00\xcc\x13\x00\x00\x83\x8b\xff\xff\xb9$`\xd4W\x9f\x00\x00\x00' \
     #               b'\x05\x00\x03\x90X\x00\x02\x98t\x00\x00\x81L\x00\x00\x7f\xbc\x00\x00\x83\x8b'
+    binary_data = b'\x02\x02\x00\x00\xcf\xbb\x005v\xd6\x00\x00v\xe3`\xd4W\x9f\x000\x117\x00:\xbf' \
+                  b'\xb0\x00\x1c\xdf\xe5\x00\x11\xaf\xa3\x005t`\x005w\x1c'
     data = CompactMarketData.create(binary_data)
     print(data.token)
     print(data.ltp)
@@ -63,14 +66,27 @@ def main():
     instrument_pe = obj.get_bnf_option_instrument(
         strike=34800, expiry=datetime.date(2021, 7, 1), option_type=OptionType.PE
     )
-    import pdb; pdb.set_trace()
-
+    instrument_fut = obj.get_bnf_future_instrument(expiry=datetime.date(2021, 7, 29))
     print(instrument_ce.code)
     print(instrument_pe.code)
+    print(instrument_fut.code)
+    data = {
+        "a": "subscribe",
+        "v": [
+            (instrument_ce.exchange_code, instrument_ce.code),
+            (instrument_pe.exchange_code, instrument_pe.code),
+            (instrument_fut.exchange_code, instrument_fut.code),
+        ],
+        "m": "compact_marketdata"
+    }
+    print(data)
     ws = AliceBlueWebSocket(access_token=obj.access_token)
-    ws.connect()
-    # data = {"a": "subscribe", "v": [(instrument.exchange_code, instrument.code)], "m": "marketdata"}
-    # ws.send(data)
+    ws.start(thread=True)
+    ws.send_heartbeat()
+    ws.wait_until_connection_open()
+    print("reach this point")
+    ws.send(data)
+    time.sleep(60)
 
 
 if __name__ == "__main__":
