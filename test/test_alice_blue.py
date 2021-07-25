@@ -4,11 +4,11 @@ Author:         Dibyaranjan Sathua
 Created on:     21/06/21, 11:20 am
 """
 import datetime
+import time
 from alice_blue_api.api import AliceBlueApi
 from alice_blue_api.enums import OptionType
 from alice_blue_api.websocket import AliceBlueWebSocket
 from alice_blue_api.websocket_streams import MarketData, CompactMarketData
-import time
 
 
 def test_websocket_streams():
@@ -57,14 +57,16 @@ def test_websocket_compact_market():
 
 def main():
     """ Main testing function """
-    obj = AliceBlueApi()
+    obj = AliceBlueApi.get_handler()
     obj.api_setup()
     obj.option_setup()
+    print(obj.access_token)
+    print(obj.auth_token)
     instrument_ce = obj.get_bnf_option_instrument(
-        strike=34800, expiry=datetime.date(2021, 7, 1), option_type=OptionType.CE
+        strike=34800, expiry=datetime.date(2021, 7, 29), option_type=OptionType.CE
     )
     instrument_pe = obj.get_bnf_option_instrument(
-        strike=34800, expiry=datetime.date(2021, 7, 1), option_type=OptionType.PE
+        strike=34800, expiry=datetime.date(2021, 7, 29), option_type=OptionType.PE
     )
     instrument_fut = obj.get_bnf_future_instrument(expiry=datetime.date(2021, 7, 29))
     print(instrument_ce.code)
@@ -80,7 +82,7 @@ def main():
         "m": "compact_marketdata"
     }
     print(data)
-    ws = AliceBlueWebSocket(access_token=obj.access_token)
+    ws = AliceBlueWebSocket()
     ws.start(thread=True)
     ws.send_heartbeat()
     ws.wait_until_connection_open()

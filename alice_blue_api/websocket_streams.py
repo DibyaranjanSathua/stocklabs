@@ -96,7 +96,7 @@ class CompactMarketData:
     token: int
     ltp: int
     change: int
-    exchange_timestamp: datetime.time
+    exchange_timestamp: datetime.datetime
     volume: int
 
     @classmethod

@@ -3,7 +3,7 @@ File:           historical_price.py
 Author:         Dibyaranjan Sathua
 Created on:     06/07/21, 12:44 am
 """
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 import datetime
 from dataclasses import dataclass
 import requests
@@ -35,7 +35,7 @@ class InstrumentCandle:
             low=data[3],
             close=data[4],
             volume=data[5],
-            open_interest=data[6] if len(data) == 6 else None
+            open_interest=data[6] if len(data) == 7 else None
         )
 
 
@@ -57,6 +57,7 @@ class KiteCandle:
     def __init__(self):
         self._candles: List[InstrumentCandle] = []
         self._request_successful: bool = False
+        self._today: Optional[datetime.date] = None
 
     def send_request(
             self,
@@ -78,9 +79,11 @@ class KiteCandle:
             oi=oi
         )
         headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 11_2_3) AppleWebKit/537.36 "
+            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 11_2_3) AppleWebKit/537.36 "
                           "(KHTML, like Gecko) Chrome/89.0.4389.90 Safari/537.36",
-            "Authorization": f"enctoken {Config.CANDLE_API_TOKEN}"
+            "authorization": f"enctoken {Config.CANDLE_API_TOKEN}",
+            "referer": "https://kite.zerodha.com/static/build/chart.html?v=2.9.2",
+            "accept-language": "en-IN,en;q=0.9,hi-IN;q=0.8,hi;q=0.7,en-GB;q=0.6,en-US;q=0.5",
         }
         with requests.Session() as session:
             response = session.get(url=url, headers=headers)
@@ -90,14 +93,35 @@ class KiteCandle:
             else:
                 print("Error fetching data using Kite internal API.")
 
-    def get_todays_open_price(self):
-        """ Return todays open price """
-        today = datetime.date.today()
-        time = datetime.time(hour=9, minute=15)
+    def get_todays_open_price(self) -> float:
+        """ Return today's open price """
+        return self.get_todays_price_by_time(time=datetime.time(hour=9, minute=15)).open
+
+    def get_todays_price_by_time(self, time: datetime.time) -> InstrumentCandle:
+        """ Return today's price by time """
+        today = self._today if self._today is not None else datetime.date.today()
         candle = next((x for x in self._candles if x.date == today and x.time == time), None)
         if candle is not None:
-            return candle.open
+            return candle
         print(f"No candle data for date {today} and time {time}")
+
+    def get_previous_trading_day_high_low(self) -> Tuple[Optional[float], Optional[float]]:
+        """ Return previous trading day's high low """
+        today = self._today if self._today is not None else datetime.date.today()
+        # Previous day can be a non-trading day. So check up to today - 5
+        for day in range(1, 6):
+            time_delta = datetime.timedelta(days=day)
+            previous_day = today - time_delta
+            candles = [x for x in self._candles if x.date == previous_day]
+            if candles:
+                break
+        else:
+            # Executed if for loop is not terminated by break statement
+            print("No candles data found for the last 5 days")
+            return None, None
+        high = max(x.high for x in candles)
+        low = min(x.low for x in candles)
+        return high, low
 
     @staticmethod
     def _get_candles(json_data: Dict):
@@ -112,3 +136,11 @@ class KiteCandle:
     @property
     def request_successful(self) -> bool:
         return self._request_successful
+
+    @property
+    def today(self) -> datetime.date:
+        return self._today
+
+    @today.setter
+    def today(self, today: datetime.date):
+        self._today = today

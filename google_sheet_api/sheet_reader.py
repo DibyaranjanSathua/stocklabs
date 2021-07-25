@@ -3,32 +3,15 @@ File:           sheet_reader.py
 Author:         Dibyaranjan Sathua
 Created on:     23/06/21, 9:20 pm
 """
-from pathlib import Path
-from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-from google.oauth2.service_account import Credentials
-
-from google_sheet_api.exceptions import GoogleSheetError
+from google_sheet_api.base_sheet_api import BaseSheetAPI
 
 
-class SheetReader:
+class SheetReader(BaseSheetAPI):
     """ Read data from google sheets """
     SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 
     def __init__(self, token_file: str):
-        self._token_file: Path = Path(token_file)
-        if not self._token_file.is_file():
-            raise GoogleSheetError(
-                f"Token file {self._token_file} for google sheet api doesn't exist"
-            )
-
-    def _get_service(self):
-        """ Get the service object for executing spreadsheets methods """
-        # Make sure that you have shared the google sheet with the client_email in token.json
-        creds = Credentials.from_service_account_file(str(self._token_file), scopes=self.SCOPES)
-        service = build('sheets', 'v4', credentials=creds)
-        return service
+        super(SheetReader, self).__init__(token_file=token_file)
 
     def read(self, sheet_id: str, cells: str):
         """ Read cells value from the required sheet with sheet_id """

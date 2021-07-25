@@ -11,7 +11,7 @@ from alice_blue_api.enums import OptionType
 
 
 @dataclass()
-class Instruments:
+class Instrument:
     trading_symbol: str
     symbol: str
     lot_size: Optional[int]

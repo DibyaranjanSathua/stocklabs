@@ -9,12 +9,12 @@ from typing import Optional, Dict, List
 import datetime
 import logging
 import requests
-import websocket
 from bs4 import BeautifulSoup
+import json
 
 from alice_blue_api.config import Config
 from alice_blue_api.exceptions import AliceBlueApiError
-from alice_blue_api.instruments import Instruments
+from alice_blue_api.instruments import Instrument
 from alice_blue_api.enums import OptionType, Exchanges
 
 
@@ -23,19 +23,22 @@ class ApiEndpoint:
     AUTHORIZE: str = "/oauth2/auth"
     ACCESS_TOKEN: str = "/oauth2/token"
     MASTER_CONTRACT: str = "/api/v2/contracts.json?exchanges={exchange}"
+    LOGIN: str = "/api/v1/user/login"
+    TWO_FA: str = "/api/v1/user/twofa"
 
 
 class AliceBlueApi:
-    """ Class responsible for AliceBlue API """
+    """ Class responsible for AliceBlue API. This is a singleton class """
     BASE_URL = "https://ant.aliceblueonline.com"
+    __instance: Optional["AliceBlueApi"] = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls.__instance is None:
+            cls.__instance = super(AliceBlueApi, cls).__new__(cls, *args, **kwargs)
+            return cls.__instance
+        raise SyntaxError("This is a Singleton class. Use get_handler() method")
 
     def __init__(self):
-        self._username: str = Config.USERNAME
-        self._password: str = Config.PASSWORD
-        self._app_id: str = Config.APPID
-        self._app_secret: str = Config.APPSECRET
-        self._redirect_url: str = Config.REDIRECT_URL
-        self._2fa_answer: str = Config.TWO_FA_ANSWER
         self._logger = logging.getLogger(self.__class__.__name__)
         self._logger.setLevel(logging.INFO)
         handler = logging.StreamHandler()
@@ -47,19 +50,89 @@ class AliceBlueApi:
         self._master_contracts = dict()
         self._options_master_contracts = []
         self._future_master_contracts = []
-        self._bnf_instruments: List[Instruments] = []
+        self._bnf_instruments: List[Instrument] = []
         self._access_token: str = ""
+        self._auth_token: str = ""
+
+    @classmethod
+    def get_handler(cls):
+        """ Get or create API handler """
+        if cls.__instance is None:
+            cls.__instance = AliceBlueApi()
+        return cls.__instance
+
+    @classmethod
+    def reset(cls):
+        """ Method for test purposes. Don't use it in real code """
+        cls.__instance = None
 
     def api_setup(self):
         """ Setup APIs """
-        self._access_token = self.generate_access_token()
+        self.refresh_access_token()
+        self.refresh_auth_token()
         self._headers["Authorization"] = f"Bearer {self._access_token}"
+
+    def refresh_auth_token(self):
+        """ Generate a new auth token """
+        self._auth_token = self.generate_auth_token()
+
+    def refresh_access_token(self):
+        """ Generate a new access token """
+        self._access_token = self.generate_access_token()
+
+    def generate_auth_token(self):
+        """ This token will be used for alice blue internal API such as to get candle data """
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Accept-Language": "en-IN,en;q=0.9",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                          "(KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36",
+            "x-device-type": "web"
+        }
+        with requests.Session() as session:
+            # Send post request to login to get two factor authentication token
+            login_url = f"{self.BASE_URL}{ApiEndpoint.LOGIN}"
+            payload = {
+                "login_id": Config.USERNAME,
+                "password": Config.PASSWORD,
+                "device": "WEB"
+            }
+            response = session.post(url=login_url, data=json.dumps(payload), headers=headers)
+            if not response.ok:
+                self._logger.error(f"Non 200 status code from {login_url}")
+                self._logger.error(response.text)
+                raise AliceBlueApiError("Non 200 status code")
+            # Send post request for two FA authentication
+            data = response.json()["data"]
+            twofa_data = data["twofa"]
+            twofa_token = twofa_data["twofa_token"]
+            twofa_type = twofa_data["type"]
+            twofa_questions = twofa_data["questions"]
+            twofa_url = f"{self.BASE_URL}{ApiEndpoint.TWO_FA}"
+            payload = {
+                "login_id": Config.USERNAME,
+                "twofa": [
+                    {"question_id": str(x["question_id"]), "answer": Config.TWO_FA_ANSWER}
+                    for x in twofa_questions
+                ],
+                "twofa_token": twofa_token,
+                "type": twofa_type
+            }
+            response = session.post(url=twofa_url, data=json.dumps(payload), headers=headers)
+            if not response.ok:
+                self._logger.error(f"Non 200 status code from {twofa_url}")
+                self._logger.error(response.text)
+                raise AliceBlueApiError("Non 200 status code")
+            data = response.json()["data"]
+            return data["auth_token"]
 
     def generate_access_token(self):
         """ Get access token """
         session = requests.Session()
         url = f"{self.BASE_URL}{ApiEndpoint.AUTHORIZE}?response_type=code&" \
-              f"state=test_state&client_id={self._app_id}&redirect_uri={self._redirect_url}"
+              f"state=test_state&client_id={Config.APPID}&redirect_uri={Config.REDIRECT_URL}"
         response = session.get(url)
         if "OAuth 2.0 Error" in response.text:
             self._logger.error(
@@ -69,8 +142,8 @@ class AliceBlueApi:
         csrf_token = soup.find("input", attrs={"name": "_csrf_token"})["value"]
         login_challenge = soup.find("input", attrs={"name": "login_challenge"})["value"]
         payload = {
-            "client_id": self._username,
-            "password": self._password,
+            "client_id": Config.USERNAME,
+            "password": Config.PASSWORD,
             "login_challenge": login_challenge,
             "_csrf_token": csrf_token
         }
@@ -89,8 +162,8 @@ class AliceBlueApi:
         csrf_token = soup.find("input", attrs={"name": "_csrf_token"})["value"]
         login_challenge = soup.find("input", attrs={"name": "login_challenge"})["value"]
         payload = {
-            "answer1": self._2fa_answer,
-            "answer2": self._2fa_answer,
+            "answer1": Config.TWO_FA_ANSWER,
+            "answer2": Config.TWO_FA_ANSWER,
             "question_id1": question_ids,
             "login_challenge": login_challenge,
             "_csrf_token": csrf_token
@@ -125,19 +198,17 @@ class AliceBlueApi:
             name, value = param.split("=")
             query_params[name] = value
         code = query_params["code"]
-        self._logger.info(f"Code: {code}")
         # Get Access Token
         payload = {
             "code": code,
-            "redirect_uri": self._redirect_url,
+            "redirect_uri": Config.REDIRECT_URL,
             "grant_type": "authorization_code"
         }
         url = f"{self.BASE_URL}{ApiEndpoint.ACCESS_TOKEN}"
-        response = session.post(url, auth=(self._app_id, self._app_secret), data=payload)
+        response = session.post(url, auth=(Config.APPID, Config.APPSECRET), data=payload)
         json_data = response.json()
         if "access_token" in json_data:
             access_token = json_data["access_token"]
-            self._logger.info(f"Access Token: {access_token}")
             return access_token
         self._logger.error(f"Couldn't get access token {response.text}")
 
@@ -183,17 +254,17 @@ class AliceBlueApi:
     def create_bnf_instruments(self):
         """ Return list of bnf instruments from master contracts """
         self._bnf_instruments = [
-            Instruments.create(x)
+            Instrument.create(x)
             for x in self._options_master_contracts if "BANKNIFTY" in x["symbol"]
         ]
         self._bnf_instruments += [
-            Instruments.create(x)
+            Instrument.create(x)
             for x in self._future_master_contracts if "BANKNIFTY" in x["symbol"]
         ]
 
     def get_bnf_option_instrument(
             self, strike: int, expiry: datetime.date, option_type: OptionType
-    ):
+    ) -> Optional[Instrument]:
         """ Get Call Option instrument by strike and expiry """
         return next(
             (
@@ -214,9 +285,17 @@ class AliceBlueApi:
         )
 
     @property
-    def bnf_instruments(self) -> List[Instruments]:
+    def bnf_instruments(self) -> List[Instrument]:
         return self._bnf_instruments
 
     @property
     def access_token(self) -> str:
+        if not self._access_token:
+            self.refresh_access_token()
         return self._access_token
+
+    @property
+    def auth_token(self) -> str:
+        if not self._auth_token:
+            self.refresh_auth_token()
+        return self._auth_token

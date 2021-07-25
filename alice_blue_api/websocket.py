@@ -11,21 +11,25 @@ import threading
 import time
 import websocket
 
+from alice_blue_api.api import AliceBlueApi
+from alice_blue_api.websocket_streams import MarketData, CompactMarketData
+from alice_blue_api.option_chain import OptionChain
+
 
 class AliceBlueWebSocket:
     """ Web socket connection to get live feed market data """
     WS_ENDPOINT: str = 'wss://ant.aliceblueonline.com/hydrasocket/v2/websocket' \
                        '?access_token={access_token}'
 
-    def __init__(self, access_token: str):
-        self._access_token = access_token
+    def __init__(self):
         self._websocket: Optional[websocket.WebSocketApp] = None
         self._connected = False
         self._websocket_thread = None
+        self._alice_blue_api_handler: AliceBlueApi = AliceBlueApi.get_handler()
 
     def connect(self):
         """ Connect to web socket """
-        url = self.WS_ENDPOINT.format(access_token=self._access_token)
+        url = self.WS_ENDPOINT.format(access_token=self._alice_blue_api_handler.access_token)
         self._websocket = websocket.WebSocketApp(
             url=url,
             on_open=self.on_open,
@@ -55,8 +59,10 @@ class AliceBlueWebSocket:
 
     def on_message(self, ws, message):
         """ on message callback """
-        print("Receive message")
-        print(message)
+        print("Receive message. Update option chain")
+        market_data = MarketData.create(message)
+        option_chain = OptionChain.get_instance()
+        option_chain.update(market_data)
 
     def on_open(self, ws):
         """ on open callback """
