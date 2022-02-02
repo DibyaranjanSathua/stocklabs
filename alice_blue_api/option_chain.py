@@ -4,7 +4,7 @@ Author:         Dibyaranjan Sathua
 Created on:     25/06/21, 2:05 pm
 """
 from typing import Optional, Dict
-from alice_blue_api.websocket_streams import MarketData
+from alice_blue_api.websocket_streams import MarketData, CompactMarketData
 from alice_blue_api.instruments import Instrument
 
 
@@ -34,10 +34,10 @@ class OptionChain:
         """ Method for test purposes. Don't use it in real code """
         cls.__instance = None
 
-    def update(self, data: MarketData):
+    def update(self, data: CompactMarketData):
         """ Parse the binary data and add to Option Chain """
-        self.__option_chain[data.token] = data
+        self.__option_chain[data.code] = data
 
-    def get_market_data_by_instrument(self, instrument: Instrument) -> MarketData:
+    def get_market_data_by_instrument(self, instrument: Instrument) -> CompactMarketData:
         """ Get the market data by instrument """
         return self.__option_chain[instrument.code]

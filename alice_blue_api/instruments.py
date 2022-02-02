@@ -21,6 +21,7 @@ class Instrument:
     code: int
     option_type: Optional[OptionType]
     strike: Optional[int]
+    index: bool
 
     @classmethod
     def create(cls, data):
@@ -34,18 +35,20 @@ class Instrument:
         if "expiry" in data:
             expiry = datetime.datetime.fromtimestamp(data["expiry"]).date()
         code = int(data["code"])
-        # Check if the data is for Index Instrument
-        symbol_parts = data["symbol"].split(" ")
-        if symbol_parts[-1] == "CE":
-            option_type = OptionType.CE
-            # strike will be in float. S0 first convert it to float then int
-            strike = int(float(symbol_parts[-2]))
-        elif symbol_parts[-1] == "PE":
-            option_type = OptionType.PE
-            strike = int(float(symbol_parts[-2]))
-        elif symbol_parts[-1] == "FUT":
-            option_type = OptionType.FUT
-            strike = None
+        index = data.get("index", False)
+        if not index:
+            # Check if the data is for Option or Fut Instrument
+            symbol_parts = data["symbol"].split(" ")
+            if symbol_parts[-1] == "CE":
+                option_type = OptionType.CE
+                # strike will be in float. S0 first convert it to float then int
+                strike = int(float(symbol_parts[-2]))
+            elif symbol_parts[-1] == "PE":
+                option_type = OptionType.PE
+                strike = int(float(symbol_parts[-2]))
+            elif symbol_parts[-1] == "FUT":
+                option_type = OptionType.FUT
+                strike = None
 
         return cls(
             trading_symbol=data["trading_symbol"],
@@ -56,5 +59,6 @@ class Instrument:
             exchange=data["exchange"],
             code=code,
             option_type=option_type,
-            strike=strike
+            strike=strike,
+            index=index
         )

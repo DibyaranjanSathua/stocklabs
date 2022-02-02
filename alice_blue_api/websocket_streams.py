@@ -7,6 +7,8 @@ from dataclasses import dataclass
 import datetime
 import struct
 
+from alice_blue_api.enums import FeedModes
+
 
 def unpack_int8(bin_data, pos):
     """ Convert 1 byte data """
@@ -36,11 +38,38 @@ def price_multiplier_by_exchange(exchange: int):
         return lambda x: x / 10000000
 
 
+def get_mode_from_stream(bin_data) -> FeedModes:
+    """ Return the mode from the binary stream data (1st byte) """
+    mode = unpack_int8(bin_data, 0)
+    enum_mode = None
+    if mode == 1:
+        enum_mode = FeedModes.MARKET_DATA
+    elif mode == 2:
+        enum_mode = FeedModes.COMPACT_MARKETDATA
+    elif mode == 3:
+        enum_mode = FeedModes.SNAPQUOTE
+    elif mode == 4:
+        enum_mode = FeedModes.FULL_SNAPQUOTE
+    elif mode == 5:
+        enum_mode = FeedModes.SPREADDATA
+    elif mode == 6:
+        enum_mode = FeedModes.SPREAD_SNAPQUOTE
+    elif mode == 7:
+        enum_mode = FeedModes.DPR
+    elif mode == 8:
+        enum_mode = FeedModes.OI
+    elif mode == 9:
+        enum_mode = FeedModes.MARKET_STATUS
+    elif mode == 10:
+        enum_mode = FeedModes.EXCHANGE_MESSAGES
+    return enum_mode
+
+
 @dataclass()
 class MarketData:
     """ Parse market binary data """
     exchange: int
-    token: int
+    code: int
     ltp: int
     last_trade_time: datetime.datetime
     last_trade_quantity: int
@@ -67,7 +96,7 @@ class MarketData:
         kwargs = dict()
         kwargs["exchange"] = unpack_int8(bin_data, 1)
         price_multiplier = price_multiplier_by_exchange(kwargs["exchange"])
-        kwargs["token"] = unpack_int32(bin_data, 2)
+        kwargs["code"] = unpack_int32(bin_data, 2)
         kwargs["ltp"] = price_multiplier(unpack_int32(bin_data, 6))
         kwargs["last_trade_time"] = datetime.datetime.fromtimestamp(unpack_int32(bin_data, 10))
         kwargs["last_trade_quantity"] = unpack_int32(bin_data, 14)
@@ -93,7 +122,7 @@ class MarketData:
 class CompactMarketData:
     """ Parse compact binary data """
     exchange: int
-    token: int
+    code: int
     ltp: int
     change: int
     exchange_timestamp: datetime.datetime
@@ -105,7 +134,7 @@ class CompactMarketData:
         kwargs = dict()
         kwargs["exchange"] = unpack_int8(bin_data, 1)
         price_multiplier = price_multiplier_by_exchange(kwargs["exchange"])
-        kwargs["token"] = unpack_int32(bin_data, 2)
+        kwargs["code"] = unpack_int32(bin_data, 2)
         kwargs["ltp"] = price_multiplier(unpack_int32(bin_data, 6))
         kwargs["change"] = unpack_int32(bin_data, 10)
         kwargs["exchange_timestamp"] = datetime.datetime.fromtimestamp(unpack_int32(bin_data, 14))

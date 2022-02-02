@@ -12,8 +12,9 @@ import time
 import websocket
 
 from alice_blue_api.api import AliceBlueApi
-from alice_blue_api.websocket_streams import MarketData, CompactMarketData
+from alice_blue_api.websocket_streams import MarketData, CompactMarketData, get_mode_from_stream
 from alice_blue_api.option_chain import OptionChain
+from alice_blue_api.enums import FeedModes, FeedAction
 
 
 class AliceBlueWebSocket:
@@ -26,6 +27,7 @@ class AliceBlueWebSocket:
         self._connected = False
         self._websocket_thread = None
         self._alice_blue_api_handler: AliceBlueApi = AliceBlueApi.get_handler()
+        self._option_chain: OptionChain = OptionChain.get_instance()
 
     def connect(self):
         """ Connect to web socket """
@@ -59,10 +61,17 @@ class AliceBlueWebSocket:
 
     def on_message(self, ws, message):
         """ on message callback """
-        print("Receive message. Update option chain")
-        market_data = MarketData.create(message)
-        option_chain = OptionChain.get_instance()
-        option_chain.update(market_data)
+        # print("Receive message. Update option chain")
+        # print(message)
+        # Get mode of the stream
+        mode = get_mode_from_stream(message)
+        if mode == FeedModes.MARKET_DATA:
+            data = MarketData.create(message)
+            self._option_chain.update(data)
+        elif mode == FeedModes.COMPACT_MARKETDATA:
+            data = CompactMarketData.create(message)
+            self._option_chain.update(data)
+            print(data)
 
     def on_open(self, ws):
         """ on open callback """
@@ -82,7 +91,7 @@ class AliceBlueWebSocket:
 
     def _send_heartbeat(self):
         """ Send heartbeat in every 10 sec to keep the web socket connection alive """
-        data = {"a": "h", "v": [], "m": ""}
+        data = {"a": FeedAction.HEARTBEAT.value, "v": [], "m": ""}
         while True:
             time.sleep(5)
             self.send(data, opcode=websocket.ABNF.OPCODE_PING)

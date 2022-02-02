@@ -47,10 +47,17 @@ class AliceBlueApi:
         self._headers = {
             "Content-Type": "application/json",
         }
-        self._master_contracts = dict()
+        self._master_contracts_nfo = dict()
+        self._master_contracts_nse = dict()
         self._options_master_contracts = []
         self._future_master_contracts = []
+        self._nse_indices_contracts = []
+        self._nse_stock_contracts = []
         self._bnf_instruments: List[Instrument] = []
+        self._nifty_instruments: List[Instrument] = []
+        self._nifty_index: Optional[Instrument] = None
+        self._banknifty_index: Optional[Instrument] = None
+        self._india_vix_index: Optional[Instrument] = None
         self._access_token: str = ""
         self._auth_token: str = ""
 
@@ -69,7 +76,7 @@ class AliceBlueApi:
     def api_setup(self):
         """ Setup APIs """
         self.refresh_access_token()
-        self.refresh_auth_token()
+        # self.refresh_auth_token()
         self._headers["Authorization"] = f"Bearer {self._access_token}"
 
     def refresh_auth_token(self):
@@ -236,36 +243,83 @@ class AliceBlueApi:
             raise AliceBlueApiError("Non 200 status code")
         return response.json()
 
-    def option_setup(self):
+    def nfo_setup(self):
         """ Get all the required master contracts """
-        self.get_master_contracts(exchange=Exchanges.NFO.name)
-        self._options_master_contracts = self._master_contracts["NSE-OPT"]
-        self._future_master_contracts = self._master_contracts["NSE-FUT"]
-        self.create_bnf_instruments()
+        self._master_contracts_nfo = self.get_master_contracts(exchange=Exchanges.NFO.name)
+        self._options_master_contracts = self._master_contracts_nfo["NSE-OPT"]
+        self._future_master_contracts = self._master_contracts_nfo["NSE-FUT"]
+        self.create_banknifty_instruments()
+        
+    def nse_setup(self):
+        """ Get all the required master contracts for stock and indices """
+        self._master_contracts_nse = self.get_master_contracts(exchange=Exchanges.NSE.name)
+        self._nse_indices_contracts = self._master_contracts_nse["NSE-IND"]
+        self._nse_stock_contracts = self._master_contracts_nse["NSE"]
+        self.create_nifty_index()
+        self.create_banknifty_index()
+        self.create_indiavix_index()
 
     def get_master_contracts(self, exchange):
         """ Get all the tradable contracts of an exchange """
-        self._master_contracts = self.api_call(
+        return self.api_call(
             endpoint=ApiEndpoint.MASTER_CONTRACT,
             method="GET",
             query_params={"exchange": exchange}
         )
 
-    def create_bnf_instruments(self):
+    def create_banknifty_instruments(self):
         """ Return list of bnf instruments from master contracts """
         self._bnf_instruments = [
             Instrument.create(x)
-            for x in self._options_master_contracts if "BANKNIFTY" in x["symbol"]
+            for x in self._options_master_contracts if x["symbol"].startswith("BANKNIFTY")
         ]
         self._bnf_instruments += [
             Instrument.create(x)
-            for x in self._future_master_contracts if "BANKNIFTY" in x["symbol"]
+            for x in self._future_master_contracts if x["symbol"].startswith("BANKNIFTY")
         ]
 
-    def get_bnf_option_instrument(
+    def create_nifty_instruments(self):
+        """ Return list of nifty instruments from master contracts """
+        self._nifty_instruments = [
+            Instrument.create(x)
+            for x in self._options_master_contracts if x["symbol"].startswith("NIFTY")
+        ]
+        self._nifty_instruments += [
+            Instrument.create(x)
+            for x in self._future_master_contracts if x["symbol"].startswith("NIFTY")
+        ]
+
+    def create_nifty_index(self):
+        """ Create nifty index NSEIndex """
+        nifty_index = next(
+            (x for x in self._nse_indices_contracts if x["symbol"] == "Nifty 50"),
+            None
+        )
+        if nifty_index is not None:
+            self._nifty_index = Instrument.create(nifty_index)
+
+    def create_banknifty_index(self):
+        """ Create banknifty index NSEIndex """
+        banknifty_index = next(
+            (x for x in self._nse_indices_contracts if x["symbol"] == "Nifty Bank"),
+            None
+        )
+        if banknifty_index is not None:
+            self._banknifty_index = Instrument.create(banknifty_index)
+
+    def create_indiavix_index(self):
+        """ Create india vix index NSEIndex """
+        inida_vix_index = next(
+            (x for x in self._nse_indices_contracts if x["symbol"] == "India VIX"),
+            None
+        )
+        if inida_vix_index is not None:
+            self._india_vix_index = Instrument.create(inida_vix_index)
+
+    def get_banknifty_option_instrument(
             self, strike: int, expiry: datetime.date, option_type: OptionType
     ) -> Optional[Instrument]:
-        """ Get Call Option instrument by strike and expiry """
+        """ Get Call Option instrument by strike and expiry for banknifty """
         return next(
             (
                 x for x in self._bnf_instruments
@@ -274,8 +328,8 @@ class AliceBlueApi:
             None
         )
 
-    def get_bnf_future_instrument(self, expiry: datetime.date):
-        """ Get future instrument """
+    def get_banknifty_future_instrument(self, expiry: datetime.date):
+        """ Get future instrument for banknifty """
         return next(
             (
                 x for x in self._bnf_instruments
@@ -284,9 +338,35 @@ class AliceBlueApi:
             None
         )
 
+    def get_nifty_option_instrument(
+            self, strike: int, expiry: datetime.date, option_type: OptionType
+    ) -> Optional[Instrument]:
+        """ Get Call Option instrument by strike and expiry for nifty"""
+        return next(
+            (
+                x for x in self._nifty_instruments
+                if x.option_type == option_type and x.strike == strike and x.expiry == expiry
+            ),
+            None
+        )
+
+    def get_nifty_future_instrument(self, expiry: datetime.date):
+        """ Get future instrument for nifty """
+        return next(
+            (
+                x for x in self._nifty_instruments
+                if x.option_type == OptionType.FUT and x.expiry == expiry
+            ),
+            None
+        )
+
     @property
-    def bnf_instruments(self) -> List[Instrument]:
+    def banknifty_instruments(self) -> List[Instrument]:
         return self._bnf_instruments
+
+    @property
+    def nifty_instruments(self) -> List[Instrument]:
+        return self._nifty_instruments
 
     @property
     def access_token(self) -> str:
@@ -299,3 +379,15 @@ class AliceBlueApi:
         if not self._auth_token:
             self.refresh_auth_token()
         return self._auth_token
+
+    @property
+    def nifty_index(self) -> Instrument:
+        return self._nifty_index
+
+    @property
+    def banknifty_index(self) -> Instrument:
+        return self._banknifty_index
+
+    @property
+    def india_vix_index(self) -> Instrument:
+        return self._india_vix_index

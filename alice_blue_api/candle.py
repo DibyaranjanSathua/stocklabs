@@ -64,8 +64,8 @@ class CandleApi:
     BASE_URL: str = "https://ant.aliceblueonline.com/api/v1/charts/tdv"
 
     @classmethod
-    def for_nse_indicies(cls):
-        """ API for nse indicies instruments """
+    def for_nse_indices(cls):
+        """ API for nse indices instruments """
         return cls(exchange=CandleExchange.NSE_INDICES)
 
     @classmethod

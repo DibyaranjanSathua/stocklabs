@@ -24,7 +24,8 @@ class BNFIntradayStraddle(BaseTradingSystem):
     ALICE_BLUE_BNF_INDEX_TOKEN: int = 26009       # bnf index token
 
     def __init__(self):
-        self._candle_api_index: CandleApi = CandleApi.for_nse_indicies()
+        super(BNFIntradayStraddle, self).__init__()
+        self._candle_api_index: CandleApi = CandleApi.for_nse_indices()
         self._candle_api_nfo: CandleApi = CandleApi.for_nfo()
         self._prev_day_high: Optional[float] = None
         self._prev_day_low: Optional[float] = None

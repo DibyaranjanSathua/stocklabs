@@ -21,3 +21,24 @@ class Exchanges(enum.Enum):
     MCX = 4
     BSE = 6
     BFO = 7
+
+
+class FeedModes(enum.Enum):
+    """ Different modes """
+    MARKET_DATA = "marketdata"
+    COMPACT_MARKETDATA = "compact_marketdata"
+    SNAPQUOTE = "snapquote"
+    FULL_SNAPQUOTE = "full_snapquote"
+    SPREADDATA = "spreaddata"
+    SPREAD_SNAPQUOTE = "spread_snapquote"
+    DPR = "dpr"
+    OI = "oi"
+    MARKET_STATUS = "market_status"
+    EXCHANGE_MESSAGES = "exchange_messages"
+
+
+class FeedAction(enum.Enum):
+    """ Action sent to web socket API """
+    SUBSCRIBE = "subscribe"
+    UNSUBSCRIBE = "unsubscribe"
+    HEARTBEAT = "h"
